@@ -273,3 +273,43 @@ is going to be the path either you supply or the build path that is
 used in the setup program
 
 
+If you want to install this library as a setup_requirement you will need 
+to create a dummy setup program to handle that but of it. Here is a code 
+example of how to do this. You would place this at the very top of your 
+setup.py file.
+
+
+``` python
+
+from setuptools import setup
+
+try:
+    import sphinx_distutils
+except ImportError:
+
+    from setuptools import Command
+
+    class install_setup_requirements(Command):
+        initilize_options = lambda x: None
+        finalize_options = lambda x: None
+        run = lambda x: None
+
+    setup(
+        name='Install Setup Requirements',
+        version='1.0.0',
+        setup_requires=['sphinx-distutils-extension']
+        dependency_links = [
+            'https://github.com/kdschlosser/sphinx-distutils-extension/tarball'
+            '/master#egg=sphinx_distutils'
+        ]
+        script_args=['install_setup_requirements']
+        cmdclass=dict(
+            install_setup_requirements=install_setup_requirements
+        )
+    )
+
+    import sphinx_distutils
+
+``` 
+
+

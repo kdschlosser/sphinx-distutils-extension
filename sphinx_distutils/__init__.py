@@ -6,4 +6,3 @@ build_docs = _build_docs
 ConfigOptions = _ConfigOptions
 
 __all__ = ('build_docs', 'ConfigOptions')
-
