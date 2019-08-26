@@ -228,9 +228,20 @@ class build_docs(Command):
         self.config_backup = None
 
     def finalize_options(self):
+        self.overrides = {}
+
         flatten = lambda l: [item for sublist in l for item in sublist]
 
         if self.html_values:
+            for html_value in self.html_values.split(';'):
+                key, val = html_value.split('=', 1)
+                try:
+                    val = int(val)
+                except ValueError:
+                    pass
+
+                self.overrides['html_context.%s' % key] = val
+
             self.html_values = flatten(
                 ['-A', item] for item in self.html_values.split(';')
             )
@@ -238,6 +249,10 @@ class build_docs(Command):
             self.html_values = []
 
         if self.config_overrides:
+            for override in self.config_overrides.split(';'):
+                key, value = override.split('=', 1)
+                self.overrides[key] = value
+
             self.config_overrides = flatten(
                 ['-D', item] for item in self.config_overrides.split(';')
             )
@@ -251,7 +266,6 @@ class build_docs(Command):
 
         if self.make_mode:
             self.builder_name = ['-M', self.builder_name]
-
         else:
             self.builder_name = ['-b', self.builder_name]
 
@@ -268,7 +282,9 @@ class build_docs(Command):
         if self.tag is None:
             self.tag = []
         else:
-            self.tag = ['-t', self.tag]
+            self.tag = flatten(
+                ['-t', item] for item in self.tag.split(';')
+            )
 
         if self.doctree_path is None:
             self.doctree_path = []
@@ -281,11 +297,6 @@ class build_docs(Command):
             self.config_path = []
         else:
             self.config_path = ['-c', self.config_path]
-
-        if self.no_config:
-            self.no_config = ['-C']
-        else:
-            self.no_config = []
 
         if self.no_config:
             self.no_config = ['-C']
@@ -323,6 +334,7 @@ class build_docs(Command):
             self.no_color = []
 
         if self.nit_picky:
+            self.overrides['nitpicky'] = True
             self.nit_picky = ['-n']
         else:
             self.nit_picky = []
@@ -347,16 +359,6 @@ class build_docs(Command):
             if not config_path.endswith('conf.py'):
                 config_path = os.path.join(config_path, 'conf.py')
 
-            if os.path.exists(config_path + '.backup'):
-                if os.path.exists(config_path):
-                    os.remove(config_path)
-
-                os.rename(config_path + '.backup', config_path)
-
-            if os.path.exists(config_path):
-                os.rename(config_path, config_path + '.backup')
-                self.config_backup = config_path + '.backup'
-
             if self.sphinx_conf.project is None:
                 self.sphinx_conf.project = self.distribution.get_name()
 
@@ -373,58 +375,179 @@ class build_docs(Command):
                     '%Y ' + self.sphinx_conf.project
                 )
 
-            print(self.sphinx_conf)
+            if self.make_mode:
+                if os.path.exists(config_path + '.backup'):
+                    if os.path.exists(config_path):
+                        os.remove(config_path)
 
-            with open(config_path, 'w') as f:
-                f.write(str(self.sphinx_conf))
+                    os.rename(config_path + '.backup', config_path)
+
+                if os.path.exists(config_path):
+                    os.rename(config_path, config_path + '.backup')
+                    self.config_backup = config_path + '.backup'
+
+                with open(config_path, 'w') as f:
+                    f.write(str(self.sphinx_conf))
 
     def run(self):
 
         try:
-            cmd_obj = self.distribution.get_command_obj('build')
-            cmd_obj.ensure_finalized()
-            build_lib = cmd_obj.build_lib
-
-            if os.path.exists(build_lib):
-                shutil.rmtree(build_lib)
-
-            cmd_obj.run()
-
-            sys.path.insert(0, build_lib)
-            if self.output_path is None:
-                self.output_path = os.path.join(build_lib, 'docs')
-
-            from sphinx.cmd.build import build_main
-
-            options = (
-                self.builder_name +
-                self.html_values +
-                self.config_overrides +
-                self.full_traceback +
-                self.all_output +
-                self.no_saved_environment +
-                self.tag +
-                self.doctree_path +
-                self.num_processes +
-                self.config_path +
-                self.no_config +
-                self.keep_going +
-                self.warnings_are_errors +
-                self.error_log +
-                self.only_errors +
-                self.quiet +
-                self.no_color +
-                self.nit_picky +
-                [self.source_path, self.output_path]
+            import sphinx.cmd.build
+        except:
+            tb = traceback.format_exc()
+            raise RuntimeError(
+                'Something went really wrong!\n' + tb
             )
 
-            build_main(options)
-        except:
-            traceback.print_exc()
+        cmd_obj = self.distribution.get_command_obj('build')
+        cmd_obj.ensure_finalized()
+        build_lib = cmd_obj.build_lib
 
-        if self.config_backup is not None:
-            config_file = self.config_backup.replace('.backup', '')
+        if os.path.exists(build_lib):
+            shutil.rmtree(build_lib)
 
-            os.remove(config_file)
-            os.rename(self.config_backup, config_file)
+        cmd_obj.run()
 
+        sys.path.insert(0, build_lib)
+        if self.output_path is None:
+            self.output_path = os.path.join(build_lib, 'docs')
+
+        if self.sphinx_conf is None or self.make_mode:
+            try:
+                options = (
+                    self.builder_name +
+                    self.html_values +
+                    self.config_overrides +
+                    self.full_traceback +
+                    self.all_output +
+                    self.no_saved_environment +
+                    self.tag +
+                    self.doctree_path +
+                    self.num_processes +
+                    self.config_path +
+                    self.no_config +
+                    self.keep_going +
+                    self.warnings_are_errors +
+                    self.error_log +
+                    self.only_errors +
+                    self.quiet +
+                    self.no_color +
+                    self.nit_picky +
+                    [self.source_path, self.output_path]
+                )
+
+                sphinx.cmd.build.build_main(options)
+            except:
+                traceback.print_exc()
+
+            if self.config_backup is not None:
+                config_file = self.config_backup.replace('.backup', '')
+
+                os.remove(config_file)
+                os.rename(self.config_backup, config_file)
+        else:
+            import sphinx.util.docutils
+            import sphinx.util.console
+            import sphinx.application
+            import sphinx.config
+            import sphinx.util
+
+            outputdir = self.output_path
+            sourcedir = self.source_path
+            confdir = sourcedir
+            confoverrides = self.overrides
+            builder = self.builder_name[1]
+            force_all = True if self.all_output else False
+            freshenv = True if self.no_saved_environment else False
+            jobs = self.num_processes[1]
+            tags = list(tag.split(' ', 1)[1] for tag in self.tags)
+            verbosity = self.distribution.verbose
+            quiet = True if self.quiet else False
+            really_quiet = True if self.only_errors else False
+            warnfile = self.error_log[1] if self.error_log else None
+            warningiserror = True if self.warnings_are_errors else False
+            keep_going = True if self.keep_going else False
+            doctreedir = (
+                self.doctree_path[1] if self.doctree_path
+                else os.path.join(build_lib, '.doctrees')
+            )
+
+            status = sys.stdout
+            warning = sys.stderr
+            error = sys.stderr
+
+            if quiet:
+                status = None
+            if really_quiet:
+                status = warning = None
+
+            if warning and warnfile:
+                try:
+                    warnfp = open(warnfile, 'w')
+                except Exception as exc:
+                    raise RuntimeError(
+                        'cannot open warning file %r: %s' % (warnfile, exc)
+                    )
+
+                warning = sphinx.util.Tee(warning, warnfp)
+                error = warning
+
+            if self.no_color or not sphinx.util.console.color_terminal():
+                sphinx.util.console.nocolor()
+
+            filenames = []
+
+            sphinx_conf = self.sphinx_conf
+
+            class args(object):
+                pdb = False
+                verbosity = self.distribution.verbose
+                traceback = True if self.full_traceback else False
+
+
+            class SphinxWrapper(sphinx.application.Sphinx):
+                _config = None
+
+                @property
+                def config(self):
+                    if self._config is None:
+                        self._config = sphinx.config.Config(
+                            sphinx_conf.__dict__,
+                            confoverrides
+                        )
+                    return self._config
+
+                @config.setter
+                def config(self, _):
+                    if self._config is None:
+                        self._config = sphinx.config.Config(
+                            sphinx_conf.__dict__,
+                            confoverrides
+                        )
+
+            app = None
+            try:
+                with (
+                    sphinx.util.docutils.patch_docutils(confdir),
+                    sphinx.util.docutils.docutils_namespace()
+                ):
+                    app = SphinxWrapper(
+                        sourcedir,
+                        confdir,
+                        outputdir,
+                        doctreedir,
+                        builder,
+                        confoverrides,
+                        status,
+                        warning,
+                        freshenv,
+                        warningiserror,
+                        tags,
+                        verbosity,
+                        jobs,
+                        keep_going
+                    )
+                    app.build(force_all, filenames)
+
+            except (Exception, KeyboardInterrupt) as exc:
+                sphinx.cmd.build.handle_exception(app, args, exc, error)
